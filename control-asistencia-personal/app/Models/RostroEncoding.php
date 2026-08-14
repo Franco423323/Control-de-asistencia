@@ -8,6 +8,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class RostroEncoding extends Model
 {
     /**
+     * The table associated with the model.
+     *
+     * @var string
+     */
+    protected $table = 'rostros_encodings';
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>

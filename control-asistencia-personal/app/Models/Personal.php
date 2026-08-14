@@ -15,6 +15,15 @@ class Personal extends Model
     protected $table = 'personal';
 
     /**
+     * The model's default values for attributes.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'estado' => 'activo',
+    ];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AsistenciaController;
 use App\Http\Controllers\PersonalController;
+use App\Http\Controllers\ReporteController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -14,3 +15,4 @@ Route::post('/personal', [PersonalController::class, 'guardar'])->name('personal
 Route::get('/personal/{personal}/enrolar', [PersonalController::class, 'enrolar'])->name('personal.enrolar');
 Route::view('/asistencia/marcar', 'asistencia.marcar');
 Route::post('/asistencia/marcar', [AsistenciaController::class, 'marcar']);
+Route::get('/reportes', [ReporteController::class, 'index'])->name('reportes.index');

@@ -88,6 +88,28 @@ class AsistenciaControllerTest extends TestCase
             ->assertExactJson(['error' => 'El servicio de reconocimiento no está disponible']);
     }
 
+    public function test_get_muestra_la_camara_y_post_procesa_en_la_misma_url(): void
+    {
+        $this->get('/asistencia/marcar')
+            ->assertOk()
+            ->assertViewIs('asistencia.marcar')
+            ->assertSee('Marcar asistencia')
+            ->assertSee('navigator.mediaDevices.getUserMedia', false);
+
+        $this->mockFaceRecognition()
+            ->shouldReceive('recognize')
+            ->once()
+            ->andReturn(['reconocido' => false]);
+
+        $this->postJson('/asistencia/marcar', [
+            'foto' => $this->foto(),
+        ])->assertOk()
+            ->assertExactJson([
+                'reconocido' => false,
+                'mensaje' => 'No se reconoció a nadie',
+            ]);
+    }
+
     public function test_primera_marca_del_dia_registra_la_entrada(): void
     {
         Carbon::setTestNow('2026-08-13 08:15:30');

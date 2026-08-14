@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Exceptions\RostroInvalidoException;
 use App\Exceptions\SinPersonalEnroladoException;
+use App\Models\Asistencia;
 use App\Models\Personal;
 use App\Services\FaceRecognitionService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Mockery\MockInterface;
@@ -15,6 +17,13 @@ use Tests\TestCase;
 class AsistenciaControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
 
     public function test_enrolar_guarda_el_encoding_y_responde_con_exito(): void
     {
@@ -79,22 +88,84 @@ class AsistenciaControllerTest extends TestCase
             ->assertExactJson(['error' => 'El servicio de reconocimiento no está disponible']);
     }
 
-    public function test_marcar_responde_el_personal_reconocido(): void
+    public function test_primera_marca_del_dia_registra_la_entrada(): void
     {
-        $this->mockFaceRecognition()
-            ->shouldReceive('recognize')
-            ->once()
-            ->withArgs(fn (string $ruta) => is_file($ruta))
-            ->andReturn([
-                'reconocido' => true,
-                'personal_id' => 3,
-                'distancia' => 0.05,
-            ]);
+        Carbon::setTestNow('2026-08-13 08:15:30');
+        $personal = $this->crearPersonal();
+        $this->simularReconocimiento($personal->id);
 
         $this->postJson('/asistencia/marcar', [
             'foto' => $this->foto(),
         ])->assertOk()
-            ->assertExactJson(['personal_id' => 3]);
+            ->assertExactJson([
+                'personal_id' => $personal->id,
+                'tipo' => 'entrada',
+                'hora' => '08:15:30',
+                'nombre_completo' => 'Prueba Enrolamiento',
+            ]);
+
+        $this->assertDatabaseHas('asistencias', [
+            'personal_id' => $personal->id,
+            'hora_entrada' => '08:15:30',
+            'hora_salida' => null,
+        ]);
+        $this->assertSame('2026-08-13', Asistencia::sole()->fecha->toDateString());
+    }
+
+    public function test_segunda_marca_del_dia_registra_la_salida(): void
+    {
+        Carbon::setTestNow('2026-08-13 17:45:10');
+        $personal = $this->crearPersonal();
+        Asistencia::create([
+            'personal_id' => $personal->id,
+            'fecha' => Carbon::today()->toDateString(),
+            'hora_entrada' => '08:15:30',
+        ]);
+        $this->simularReconocimiento($personal->id);
+
+        $this->postJson('/asistencia/marcar', [
+            'foto' => $this->foto(),
+        ])->assertOk()
+            ->assertExactJson([
+                'personal_id' => $personal->id,
+                'tipo' => 'salida',
+                'hora' => '17:45:10',
+                'nombre_completo' => 'Prueba Enrolamiento',
+            ]);
+
+        $this->assertDatabaseHas('asistencias', [
+            'personal_id' => $personal->id,
+            'hora_entrada' => '08:15:30',
+            'hora_salida' => '17:45:10',
+        ]);
+        $this->assertSame('2026-08-13', Asistencia::sole()->fecha->toDateString());
+    }
+
+    public function test_tercera_marca_del_dia_es_rechazada_con_conflicto(): void
+    {
+        Carbon::setTestNow('2026-08-13 18:00:00');
+        $personal = $this->crearPersonal();
+        Asistencia::create([
+            'personal_id' => $personal->id,
+            'fecha' => Carbon::today()->toDateString(),
+            'hora_entrada' => '08:15:30',
+            'hora_salida' => '17:45:10',
+        ]);
+        $this->simularReconocimiento($personal->id);
+
+        $this->postJson('/asistencia/marcar', [
+            'foto' => $this->foto(),
+        ])->assertConflict()
+            ->assertExactJson([
+                'error' => 'Ya se registró entrada y salida del día de hoy para este personal',
+            ]);
+
+        $this->assertDatabaseHas('asistencias', [
+            'personal_id' => $personal->id,
+            'hora_entrada' => '08:15:30',
+            'hora_salida' => '17:45:10',
+        ]);
+        $this->assertSame('2026-08-13', Asistencia::sole()->fecha->toDateString());
     }
 
     public function test_marcar_responde_claramente_si_no_hay_reconocimiento(): void
@@ -157,5 +228,18 @@ class AsistenciaControllerTest extends TestCase
     private function mockFaceRecognition(): MockInterface
     {
         return $this->mock(FaceRecognitionService::class);
+    }
+
+    private function simularReconocimiento(int $personalId): void
+    {
+        $this->mockFaceRecognition()
+            ->shouldReceive('recognize')
+            ->once()
+            ->withArgs(fn (string $ruta) => is_file($ruta))
+            ->andReturn([
+                'reconocido' => true,
+                'personal_id' => $personalId,
+                'distancia' => 0.05,
+            ]);
     }
 }
